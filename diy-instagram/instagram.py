@@ -3,6 +3,8 @@ from PIL import Image, ImageTk
 import tkinter as tk
 import numpy as np
 from scipy import ndimage
+from matplotlib import pyplot as plt
+import math
 
 os.chdir('/home/milan/Desktop/image-processing')
 
@@ -17,7 +19,7 @@ img = Image.open('warrior.jpeg')
 
 window = tk.Tk()
 window.title('Instagram')
-window.geometry('1920x1080')
+window.geometry('920x1080')
 
 r = tk.IntVar()
 g = tk.IntVar()
@@ -32,6 +34,9 @@ highlights = tk.IntVar()
 shadow = tk.IntVar()
 vignet = tk.IntVar()
 sharpen = tk.IntVar()
+tilt = tk.IntVar()
+radio = tk.StringVar()
+
 
 
 def limit(c):
@@ -175,7 +180,7 @@ def rgb2hsv(img, sCoef = 1, vCoef = 1, contrastBoundary=0):
         for j in range(h):
             r, g, b = img.getpixel((i, j))
 
-            # v = (r + g + b) / 3
+            v = (r + g + b) / 3
 
             r = r/255
             g = g/255
@@ -201,7 +206,7 @@ def rgb2hsv(img, sCoef = 1, vCoef = 1, contrastBoundary=0):
 
             # returning to range (0 - 255)
             s = s *255
-            v = cmax * 255
+            # v = cmax * 255
 
             # Saturation adjustment
             s = adjustSaturation(s, sCoef)
@@ -264,24 +269,24 @@ def vignette(hsvimg, coef):
     # changing type from uint8 to int to avoid overflow and underflow during subtraction
     npimg = npimg.astype(int)
 
-    x = np.ones((h, 1))
-    y = np.ones((w, 1))
+    x = np.ones((w, 1))
+    y = np.ones((h, 1))
 
-    bound_x = (coef/100) * (1/3) * h
-    bound_x = int(bound_x)
-
-    bound_y = (coef/100) * (1/3) * w
+    bound_y = (coef/100) * (1/3) * h
     bound_y = int(bound_y)
 
-    for i in range(bound_x):
-        x[i] = i / bound_x
-        x[h - 1 - i] = x[i]
+    bound_x = (coef/100) * (1/3) * w
+    bound_x = int(bound_x)
 
     for i in range(bound_y):
         y[i] = i / bound_y
-        y[w - 1 - i] = y[i]
+        y[h - 1 - i] = y[i]
 
-    mask = x.dot(y.T)
+    for i in range(bound_x):
+        x[i] = i / bound_x
+        x[w - 1 - i] = x[i]
+
+    mask = y.dot(x.T)
 
     npimg[:, :, 2] = npimg[:, :, 2] * mask
 
@@ -310,10 +315,12 @@ def adjustShadow(hsvimg, coef):
 
     for i in range(w):
         for j in range(h):
+            a = npimg[j, i, 2]
             if npimg[j, i, 2] < 123:
                 npimg[j, i, 2] /=123
                 npimg[j, i, 2] **= c
                 npimg[j, i, 2] *= 123
+                npimg[j, i, 2] = np.round(npimg[j, i, 2])
 
     # returning tensor to uint8, so it can be properly converted into PIL image
     npimg = npimg.astype(np.uint8)
@@ -345,6 +352,81 @@ def adjustHighlights(hsvimg, coef):
     pilImg = Image.fromarray(npimg, 'HSV')
     return pilImg
 
+
+def tiltShift(hsvimg, coef, mode):
+    # mode can be linear or radial
+    # different masks are used for blurring, depending of mode, for better results
+
+    w, h = hsvimg.size
+
+    npimg = np.array(hsvimg)
+    npimg = npimg.astype(int)
+
+    bound = (coef/100) * (1/3) * h
+    bound = int(bound)
+
+    if 'linear' == mode:
+        mask = 1/9 * np.ones((3, 3), dtype=int)
+        npimg[0:bound, :, 2] = ndimage.convolve(npimg[0:bound, :, 2], mask)
+        npimg[h-bound:h, :, 2] = ndimage.convolve(npimg[h-bound:h, :, 2], mask)
+
+    if 'radial' == mode:
+        mask = 1/25 * np.ones((5, 5), dtype=int)
+        binaryMask = np.zeros((h, w))
+
+        maxdf = math.sqrt(math.pow(w/2, 2) + math.pow(h/2, 2)) # largest distance from the middle
+        x = max(w, h) / 3 # 1/3 of larger dim
+
+        # Scaling to range [maxdf, x]
+        coef = (x - maxdf) * (coef/100) + maxdf
+
+        for i in range(w):
+            for j in range(h):
+                # df = np.abs(w/2 - i) + np.abs(h/2 - j)
+                df = math.sqrt(math.pow(int(w/2) - i, 2) + math.pow(int(h/2) - j, 2))
+                if df > coef:
+                    binaryMask[j, i] = 1
+
+        # filtered = npimg[:, :, 2] * binaryMask
+        blured = ndimage.convolve(npimg[:, :, 2], mask)
+
+        for i in range(w):
+            for j in range(h):
+                if 1 == binaryMask[j, i]:
+                    npimg[j, i, 2] = blured[j, i]
+
+
+
+    # manually returning values to range
+    for i in range(w):
+        for j in range(h):
+            npimg[j, i, 2] = limit(npimg[j, i, 2])
+
+    # returning tensor to uint8, so it can be properly converted into PIL image
+    npimg = npimg.astype(np.uint8)
+    pilImg = Image.fromarray(npimg, 'HSV')
+    return pilImg
+
+
+def histogram(hsvimg):
+    n = np.arange(0, 256)
+    hist = np.zeros(256)
+    w, h = hsvimg.size
+    npimg = np.array(hsvimg)
+
+    for i in range(w):
+        for j in range(h):
+            hist[npimg[:, :, 2][j, i]] += 1
+
+    # fig = plt.figure()
+    fig = plt.figure(figsize=(4, 3))
+    ax = fig.add_subplot(111)
+    ax.bar(n, hist)
+
+    canvas = plt.get_current_fig_manager().canvas
+    canvas.draw()
+    pilImg = Image.frombytes('RGB', canvas.get_width_height(), canvas.tostring_rgb())
+    return pilImg
 
 def apply():
     global img # global reference to img
@@ -382,6 +464,13 @@ def apply():
     vinCoef = vignet.get()
     imgCopy = vignette(imgCopy, vinCoef)
 
+    # Applying TILT SHIFT
+    tiltcoef = tilt.get()
+    radCeof = radio.get()
+    imgCopy = tiltShift(imgCopy, tiltcoef, radCeof)
+
+    hist = histogram(imgCopy)
+
     # Changing ANGLE
     angle = rot.get()
     imgCopy = rotation(imgCopy, angle, True)
@@ -390,6 +479,12 @@ def apply():
     photo = ImageTk.PhotoImage(imgCopy)
     photoLabel.config(image=photo)
     photoLabel.image = photo
+
+    histogr = ImageTk.PhotoImage(hist)
+    histLabel = tk.Label(image=histogr)
+    histLabel.image = histogr
+    histLabel.grid(column=5, row=22)
+
 
 
 def default():
@@ -423,9 +518,19 @@ def default():
     imgCopy = vignette(imgCopy, 0)
     sliderVignette.set(0)
 
+    imgCopy = tiltShift(imgCopy, 0, 0)
+    sliderTiltShift.set(0)
+
     photo = ImageTk.PhotoImage(imgCopy)
     photoLabel.config(image=photo)
     photoLabel.image = photo
+
+    hist = histogram(imgCopy)
+
+    histogr = ImageTk.PhotoImage(hist)
+    histLabel = tk.Label(image=histogr)
+    histLabel.image = histogr
+    histLabel.grid(column=5, row=22)
 
 
 ###############
@@ -539,7 +644,20 @@ lblVignetteVal = tk.Label(window, text='Vignette = 0')
 lblVignetteVal.grid(column=2, row=10)
 
 # TILT SHIFT
-# 11
+lblTiltShift = tk.Label(window, text='Tilt shift')
+lblTiltShift.grid(column=0, row = 11)
+
+sliderTiltShift = tk.Scale(window, from_=0, to=100, orient=tk.HORIZONTAL, variable=tilt)
+sliderTiltShift.grid(column=1, row=11)
+
+lblTiltShiftVal = tk.Label(window, text='Tilt shift = 0')
+lblTiltShiftVal.grid(column=2, row=11)
+
+radioLinear = tk.Radiobutton(window, text='Linear', variable=radio, value='linear')
+radioLinear.grid(column=3, row=11)
+
+radioRadial = tk.Radiobutton(window, text='Radial', variable=radio, value='radial')
+radioRadial.grid(column=4, row=11)
 
 # SHARPEN
 lblSharpen = tk.Label(window, text='Sharpen')
@@ -565,7 +683,7 @@ defaultButton.grid(column=1, row=21)
 photo = ImageTk.PhotoImage(img)
 photoLabel = tk.Label(image=photo)
 photoLabel.image = photo
-photoLabel.grid(column=4, row=21) # row as placeholder
+photoLabel.grid(column=5, row=21) # row as placeholder
 
 # Displaying histogram of image
 # histogram = ImageTk.PhotoImage(histImg)
