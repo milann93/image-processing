@@ -8,14 +8,8 @@ import math
 
 os.chdir('/home/milan/Desktop/image-processing')
 
-# Need GUI for selecting pictures
 img = Image.open('warrior.jpeg')
-# img = Image.open('test.jpg')
-# greyscale = img.convert('L')
-# hist = histogram(grayscale, 256)
-# hist = np.array(hist)
-# hist = np.reshape(hist, (256, 1))
-# histImg = Image.fromarray(hist, 'L')
+# img = Image.open('lenacolor.tif')
 
 window = tk.Tk()
 window.title('Instagram')
@@ -36,7 +30,6 @@ vignet = tk.IntVar()
 sharpen = tk.IntVar()
 tilt = tk.IntVar()
 radio = tk.StringVar()
-
 
 
 def limit(c):
@@ -408,6 +401,75 @@ def tiltShift(hsvimg, coef, mode):
     return pilImg
 
 
+def rotate_coords(x, y, theta, ox, oy):
+    # Rotate arrays of coordinates x and y by theta radians about the
+    # point (ox, oy).
+
+    s, c = np.sin(theta), np.cos(theta)
+    x, y = np.asarray(x) - ox, np.asarray(y) - oy
+    return x * c - y * s + ox, x * s + y * c + oy
+
+def rotate_image(img, theta, fill=255):
+    # Rotate the image src by theta radians about (ox, oy).
+    # Pixels in the result that don't correspond to pixels in src are
+    # replaced by the value fill.
+
+    # Images have origin at the top left, so negate the angle.
+    theta = -theta
+
+    sh, sw = img.shape
+    # Finding center of the image
+    ox = int(sh/2)
+    oy = int(sw/2)
+
+    # Rotated positions of the corners of the source image.
+    cx, cy = rotate_coords([0, sw, sw, 0], [0, 0, sh, sh], theta, ox, oy)
+
+    # Determine dimensions of destination image.
+    dw, dh = (int(np.ceil(c.max() - c.min())) for c in (cx, cy))
+
+    # Coordinates of pixels in destination image.
+    dx, dy = np.meshgrid(np.arange(dw), np.arange(dh))
+
+    # Corresponding coordinates in source image. Since we are
+    # transforming dest-to-src here, the rotation is negated.
+    sx, sy = rotate_coords(dx + cx.min(), dy + cy.min(), -theta, ox, oy)
+
+    # Select nearest neighbour.
+    sx, sy = sx.round().astype(int), sy.round().astype(int)
+
+    # Mask for valid coordinates.
+    mask = (0 <= sx) & (sx < sw) & (0 <= sy) & (sy < sh)
+
+    # Create destination image.
+    dest = np.empty(shape=(dh, dw), dtype=img.dtype)
+
+    # Copy valid coordinates from source image.
+    dest[dy[mask], dx[mask]] = img[sy[mask], sx[mask]]
+
+    # Fill invalid coordinates.
+    dest[dy[~mask], dx[~mask]] = fill
+
+    return dest
+
+
+def rotate(img, theta):
+    npimg = np.array(img)
+
+    R = rotate_image(npimg[:, :, 0], theta)
+    G = rotate_image(npimg[:, :, 1], theta)
+    B = rotate_image(npimg[:, :, 2], theta)
+
+    h, w = R.shape
+    rgbimg = np.zeros((h, w, 3), dtype=np.uint8)
+    print(rgbimg.shape)
+    for j in range(w):
+        for i in range(h):
+            rgbimg[i, j] = np.array([R[i, j], G[i, j], B[i, j]])
+
+    rgbimg = Image.fromarray(rgbimg, 'RGB')
+    return rgbimg
+
 def histogram(hsvimg):
     n = np.arange(0, 256)
     hist = np.zeros(256)
@@ -473,7 +535,8 @@ def apply():
 
     # Changing ANGLE
     angle = rot.get()
-    imgCopy = rotation(imgCopy, angle, True)
+    imgCopy = imgCopy.convert('RGB')
+    imgCopy = rotate(imgCopy, angle * np.pi / 180)
 
     # Displaying changed image
     photo = ImageTk.PhotoImage(imgCopy)
@@ -498,7 +561,7 @@ def default():
     sliderWarmth.set(0)
     sliderFade.set(0)
 
-    imgCopy = rotation(imgCopy, 0, True)
+    imgCopy = rotate(imgCopy, 0)
     sliderRot.set(0)
 
     imgCopy = rgb2hsv(imgCopy, 0, 0, 0)
