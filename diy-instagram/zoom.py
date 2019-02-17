@@ -1,16 +1,13 @@
 import os
-import PIL
-from PIL import Image, ImageTk, ImageFilter
-import tkinter as tk
+from PIL import Image, ImageFilter
 import numpy as np
-from scipy import ndimage
-import matplotlib.pyplot as plt
 
-# os.chdir('/home/stefan/image-processing')
-os.chdir('/home/milan/Desktop/image-processing')
+# os.chdir('/home/milan/Desktop/image-processing')
+img = Image.open('./data/warrior.jpeg')
 
 # Need GUI for selecting pictures
-img = Image.open('warrior.jpeg')
+# img = Image.open('warrior.jpeg')
+
 
 def bilinear_interpolation(x, y, points):
     '''Interpolate (x,y) from values associated with four points.
@@ -45,6 +42,11 @@ def bilinear_interpolation(x, y, points):
 
 
 def rescaling(image, scale):
+    scale = (-1) * scale/100 + 1
+    if scale == 0:
+        return image
+    elif scale == 1:
+        scale -= 0.001
     # convert image to matrix
     matrix = np.asarray(image)
     old_x = matrix.shape[0]
@@ -96,18 +98,13 @@ def rescaling(image, scale):
                                                                       (x1, y2, matrix[x1, y2, z]),
                                                                       (x2, y1, matrix[x1, y2, z]),
                                                                       (x2, y2, matrix[x2, y2, z])])
-                elif scale > 1:
-                    new_matrix = matrix[central_x - int(old_x*new_scale/2) : central_x + int(old_x*new_scale/2),
-                                        central_y - int(old_y*new_scale/2) : central_y + int(old_y*new_scale/2),
-                                        z]
 
-                else:
-                    return plt.imshow(Image.fromarray(np.uint8(matrix)))
+    return Image.fromarray(np.uint8(new_matrix))
 
-    return new_matrix
 
 def calc_distance(point1, point2):
     return np.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
+
 
 def closest_pixels(pixel, points):
     distances = []
@@ -116,9 +113,11 @@ def closest_pixels(pixel, points):
     distances = np.array(distances)
     return points[distances.argsort()[:1]][0]
 
+
 def find_indices(pixel, matrix, scale):
     return (max(0, pixel[0] - int(scale**4)), min(matrix.shape[0], pixel[0] + int(scale**4))),\
            (max(0, pixel[1] - int(scale**4)), min(matrix.shape[1], pixel[1] + int(scale**4)))
+
 
 def find_non_negative(indices, matrix):
     x_min, x_max = indices[0]
@@ -130,13 +129,15 @@ def find_non_negative(indices, matrix):
                   result.append((x, y))
     return np.array(result)
 
+
 def zoom(image, scale):
+
+    # range of scale is [1, 10], where 1 gives original image
+    scale = 9 * (scale/100) + 1
     if scale > 1.5:
         image = image.filter(ImageFilter.BLUR())    # convert image to matrix
-    scale = scale/100 + 1
 
     new_scale = 1 / scale
-    # range of scale is [1, 2], where 1 gives original image
     matrix = np.asarray(image)
     old_x = matrix.shape[0]
     old_y = matrix.shape[1]
@@ -147,8 +148,8 @@ def zoom(image, scale):
     new_z = matrix.shape[2]
     new_matrix = np.zeros((new_x, new_y, new_z)) - 1
     temp_matrix = matrix[central_x - int(old_x*new_scale/2) : central_x + int(old_x*new_scale/2),
-                                        central_y - int(old_y*new_scale/2) : central_y + int(old_y*new_scale/2),
-                                        :]
+                  central_y - int(old_y*new_scale/2) : central_y + int(old_y*new_scale/2),
+                  :]
     x_factor = old_x/temp_matrix.shape[0]
     y_factor = old_y/temp_matrix.shape[1]
     for z in range(new_z):
@@ -165,11 +166,8 @@ def zoom(image, scale):
                 for j in range(new_y):
                     if new_matrix[i, j, z] < 0:
                         index = find_indices((i, j), new_matrix, scale)
-        #                 print(index)
+                        #                 print(index)
                         coordinates = find_non_negative(index, new_matrix[:, :, z])
                         t1 = closest_pixels((i, j), coordinates)
                         new_matrix[i, j, z] = new_matrix[t1[0], t1[1], z]
     return Image.fromarray(np.uint8(new_matrix))
-
-
-
