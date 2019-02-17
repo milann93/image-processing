@@ -1,15 +1,17 @@
 import os
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageFilter
 import tkinter as tk
 import numpy as np
 from scipy import ndimage
 from matplotlib import pyplot as plt
 import math
+import zoom
 
 os.chdir('/home/milan/Desktop/image-processing')
 
 img = Image.open('warrior.jpeg')
 # img = Image.open('lenacolor.tif')
+w, h = img.size
 
 window = tk.Tk()
 window.title('Instagram')
@@ -30,7 +32,7 @@ vignet = tk.IntVar()
 sharpen = tk.IntVar()
 tilt = tk.IntVar()
 radio = tk.StringVar()
-
+zm = tk.IntVar()
 
 def limit(c):
     # returns pixel value to the range (0 - 255)
@@ -494,6 +496,10 @@ def apply():
     global img # global reference to img
     imgCopy = img.copy()
 
+    # Applying ZOOM
+    zoomCoef = zm.get()
+    imgCopy = zoom.zoom(imgCopy, zoomCoef)
+
     # Applying RBG color change
     r1 = r.get()
     g1 = g.get()
@@ -546,7 +552,7 @@ def apply():
     histogr = ImageTk.PhotoImage(hist)
     histLabel = tk.Label(image=histogr)
     histLabel.image = histogr
-    histLabel.grid(column=5, row=22)
+    histLabel.place(x=500, y=h+50)
 
 
 
@@ -593,7 +599,7 @@ def default():
     histogr = ImageTk.PhotoImage(hist)
     histLabel = tk.Label(image=histogr)
     histLabel.image = histogr
-    histLabel.grid(column=5, row=22)
+    histLabel.place(x=500, y=h+50)
 
 
 ###############
@@ -733,7 +739,14 @@ lblSharpenVal = tk.Label(window, text='Sharpen = 0')
 lblSharpenVal.grid(column=2, row=12)
 
 # ZOOM
+lblZoom = tk.Label(window, text='Zoom')
+lblZoom.grid(column=0, row=13)
 
+sliderZoom = tk.Scale(window, from_=0, to=100, orient=tk.HORIZONTAL, variable=zm)
+sliderZoom.grid(column=1, row=13)
+
+lblZoomVal = tk.Label(window, text='Zoom = 0')
+lblZoomVal.grid(column=2, row=13)
 
 # BUTTONS
 applyButton = tk.Button(window, text='Apply', command=apply)
@@ -746,7 +759,8 @@ defaultButton.grid(column=1, row=21)
 photo = ImageTk.PhotoImage(img)
 photoLabel = tk.Label(image=photo)
 photoLabel.image = photo
-photoLabel.grid(column=5, row=21) # row as placeholder
+# photoLabel.grid(column=5, row=21) # row as placeholder
+photoLabel.place(x=500, y=0)
 
 # Displaying histogram of image
 # histogram = ImageTk.PhotoImage(histImg)
